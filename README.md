@@ -1,3 +1,17 @@
+# Achieved work
+The assumtions, analysis and the description of the work done for this exercise are detailed in:
+[forex-mtl/README.md](https://github.com/brunierterry/forex-exercise/blob/master/forex-mtl/README.md)
+
+
+
+------
+
+
+------
+
+
+------
+
 <img src="/paidy.png?raw=true" width=300 style="background-color:white;">
 
 # Paidy Take-Home Coding Exercises

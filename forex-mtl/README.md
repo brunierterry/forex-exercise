@@ -103,3 +103,38 @@ I recommand to implement the proxy:
 - when `GET /rates` recieve a query
     - fetch the 1 or 2 reference pairs needed
     - generate the response from the fetched reference pairs (exhange rate, oldest timestamp, and currency codes)
+
+# Local environment set up
+
+## IDE setup
+Configured IDE's code auto-format to use the `.scalafmt.conf` in the project.
+
+## Fix build error
+I downgraded `sbt-revolver` to version `0.9.0` so the code can compile.
+
+## Fix http configuration
+I modified the port of this Proxy app to `8081` as `8080` is already used by the One-Frame docker container.
+
+## API calls
+I created a [dedicated workspace on Postman](https://web.postman.co/workspace/forex-exercise~8686dc82-9f31-4eb7-80b6-59a1b1045c8f/overview) to have an efficient UI to directly query the endpoint I'll work on.
+
+I could get the valid JSON response below and "OK" `200` HTTP status from for `{{host}}/rates?from=USD&to=JPY` with `host=
+localhost:8081`:
+```json
+{
+    "from": "USD",
+    "to": "JPY",
+    "price": 100,
+    "timestamp": "2023-04-08T15:17:10.988476+09:00"
+}
+```
+
+As expected from what I saw in the "dummy" [stub implementation of the OneFrame service](https://github.com/brunierterry/forex-exercise/blob/98b0dcf95b5e554943c80c2180e5a68fa397f62d/forex-mtl/src/main/scala/forex/services/rates/interpreters/OneFrameDummy.scala#L12-L13), the price is always `100` in the current response.
+
+
+However, this is strange that Blaze Server's logs show 2 connection lines like `Accepted connection from /[0:0:0:0:0:0:0:1]:58734` for each HTTP call in postman. This is a low priority right now, but I will consider to investigate this later.
+
+I also temporarily replaced the [route logic in RatesHttpRoutes](https://github.com/brunierterry/forex-exercise/blob/98b0dcf95b5e554943c80c2180e5a68fa397f62d/forex-mtl/src/main/scala/forex/http/rates/RatesHttpRoutes.scala#L18-L23) by a simple `Ok("Hello world")` to ensure my understanding: everything is OK!
+
+
+-> **The environment is ready!**

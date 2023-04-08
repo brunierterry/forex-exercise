@@ -19,6 +19,7 @@ class Application[F[_]: ConcurrentEffect: Timer] {
   def stream(ec: ExecutionContext): Stream[F, Unit] =
     for {
       config <- Config.stream("app")
+      // TODO PR (low) - Investigate why blaze show 2 "Accepted connection" logs for 1 API call
       module = new Module[F](config)
       _ <- BlazeServerBuilder[F](ec)
             .bindHttp(config.http.port, config.http.host)

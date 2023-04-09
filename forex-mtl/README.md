@@ -16,6 +16,7 @@ Usually I would confirm the priority between the needs with a PO, as there are n
 - **Availability is the most important criteria** for the proxy service, as 5 minutes tolerance is huge for a forex accurate use-case like trading. Otherwise, if accuracy would be the priority, another solution would have been suggested, like using several tokens for "One-Frame" to have accurate answers, but it would likely be expensive or have other drawbacks.
 - A "**day**" in requirements, is a period of time **starting at 00:00** UTC+0 **and ending at 23:59** UTC+0 (and max seconds, max milliseconds, ...).
 - A **single exchange rate** must be served by `GET /rates`, so it would be likely **the average price** of bid price and ask price (coherent why having less priority for accuracy).
+- No internationalization/localization required, all API messages can be literal strings in English.
 
 ## Feasibility study
 
@@ -138,3 +139,11 @@ I also temporarily replaced the [route logic in RatesHttpRoutes](https://github.
 
 
 -> **The environment is ready!**
+
+# Implementation
+
+## Step 1: Handle inputs parsing error
+
+First, I reused the spreadsheet to generate currencies enum case objects.
+
+Then, I rewrote `fromString` method, `currencyQueryParam` parsing logic, and `httpRoutes` logic to return proper error messages on bad requests.

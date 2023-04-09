@@ -10,5 +10,13 @@ object Rate {
   final case class Pair(
       from: Currency,
       to: Currency
-  )
+  ) {
+    def hasSameCurrency: Boolean =
+      from == to
+  }
+
+  object Pair {
+    def ofSameCurrency(currency: Currency) =
+      Pair(currency, currency)
+  }
 }

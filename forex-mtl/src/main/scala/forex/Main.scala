@@ -16,6 +16,8 @@ object Main extends IOApp {
 
 class Application[F[_]: ConcurrentEffect: Timer] {
 
+  // TODO PR (high) - Add tests
+
   def stream(ec: ExecutionContext): Stream[F, Unit] =
     for {
       config <- Config.stream("app")

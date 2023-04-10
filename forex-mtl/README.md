@@ -147,3 +147,10 @@ I also temporarily replaced the [route logic in RatesHttpRoutes](https://github.
 First, I reused the spreadsheet to generate currencies enum case objects.
 
 Then, I rewrote `fromString` method, `currencyQueryParam` parsing logic, and `httpRoutes` logic to return proper error messages on bad requests.
+
+
+## Step 2: Naive implementation of OneFrame service
+
+In this commit, I focussed on parsing the JSON response from OneFrame. So I added a dependency to blaze client and started a temporary naive implementation of OneFrame service that directly serve its response directly as Proxy's response.
+
+To save time, I intentionally use `http` rather than `https` and `Uri.unsafeFromString()`. I also updated `http4s` version.

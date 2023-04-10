@@ -1,6 +1,7 @@
 package forex.domain
 
 import cats.Show
+import io.circe.Decoder
 
 sealed trait Currency
 
@@ -10,6 +11,9 @@ object Currency {
 
   implicit val show: Show[Currency] =
     Show.show(_.toString)
+
+  implicit val decodeCurrency: Decoder[Currency] =
+    Decoder.decodeString.emap(fromString)
 
   final case object AED extends Currency
   final case object AFN extends Currency

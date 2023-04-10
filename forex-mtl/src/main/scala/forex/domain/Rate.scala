@@ -11,7 +11,7 @@ object Rate {
       from: Currency,
       to: Currency
   ) {
-    def hasSameCurrency: Boolean =
+    def isOnSameCurrency: Boolean =
       from == to
   }
 

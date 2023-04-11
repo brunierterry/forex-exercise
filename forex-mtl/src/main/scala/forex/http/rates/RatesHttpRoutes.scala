@@ -17,22 +17,22 @@ class RatesHttpRoutes[F[_]: Sync](rates: RatesProgram[F]) extends Http4sDsl[F] {
 
   private[http] val prefixPath = "/rates"
 
-  type EitherBadResponseMonad[T] = EitherT[F, F[Response[F]], T]
+  type EitherBadResponseWrapper[T] = EitherT[F, F[Response[F]], T]
 
   private val httpRoutes: HttpRoutes[F] = HttpRoutes.of[F] {
     case GET -> Root :? FromQueryParam(from) +& ToQueryParam(to) =>
       val validResponseOrErrorResponse =
         for {
-          fromCurrency <- paramOptionalValidationToRouteMonad(
+          fromCurrency <- paramOptionalValidationToRouteWrapper(
                            paramValidationOpt = from,
                            missingParamMessage = "Missing \"from\" currency parameter."
                          )
-          toCurrency <- paramOptionalValidationToRouteMonad(
+          toCurrency <- paramOptionalValidationToRouteWrapper(
                          paramValidationOpt = to,
                          missingParamMessage = "Missing \"to\" currency parameter."
                        )
           ratesRequest = RatesProgramProtocol.GetRatesRequest(fromCurrency, toCurrency)
-          rate <- EitherT(rates.get(ratesRequest)).leftMap { programError =>
+          rate <- EitherT(rates.getExchangeRate(ratesRequest)).leftMap { programError =>
                    BadRequest(programError.msg)
                  }
         } yield Ok(rate.asGetApiResponse)
@@ -52,28 +52,28 @@ class RatesHttpRoutes[F[_]: Sync](rates: RatesProgram[F]) extends Http4sDsl[F] {
   ): Either[ParseFailure, T] =
     paramValidation.toEither.left.map(_.head)
 
-  private def eitherToResponseEitherMonad[E, T](
+  private def eitherToResponseEitherWrapper[E, T](
       valueOrError: Either[E, T]
-  )(makeResponse: E => F[Response[F]]): EitherBadResponseMonad[T] = {
+  )(makeResponse: E => F[Response[F]]): EitherBadResponseWrapper[T] = {
     val validParamOrBadRequest = valueOrError.left.map(makeResponse)
     EitherT(validParamOrBadRequest.pure[F])
   }
 
-  private def paramValidationToRouteMonad[T](
+  private def paramValidationToRouteWrapper[T](
       paramValidation: ValidatedNel[ParseFailure, T]
-  ): EitherBadResponseMonad[T] = {
+  ): EitherBadResponseWrapper[T] = {
     val validParamOrParseFailure = paramValidationToEitherParseFailure(paramValidation)
-    eitherToResponseEitherMonad(validParamOrParseFailure) {
+    eitherToResponseEitherWrapper(validParamOrParseFailure) {
       case ParseFailure(sanitizedMessage, _) =>
         BadRequest(sanitizedMessage)
     }
   }
-  private def paramOptionalValidationToRouteMonad[T](
+  private def paramOptionalValidationToRouteWrapper[T](
       paramValidationOpt: Option[ValidatedNel[ParseFailure, T]],
       missingParamMessage: String
-  ): EitherBadResponseMonad[T] =
+  ): EitherBadResponseWrapper[T] =
     paramValidationOpt
-      .map(paramValidationToRouteMonad)
+      .map(paramValidationToRouteWrapper)
       .getOrElse(
         EitherT.leftT(BadRequest(missingParamMessage))
       )

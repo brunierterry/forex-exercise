@@ -4,5 +4,5 @@ import forex.domain.Rate
 import errors._
 
 trait Algebra[F[_]] {
-  def get(request: Protocol.GetRatesRequest): F[ProgramError Either Rate]
+  def getExchangeRate(request: Protocol.GetRatesRequest): F[ProgramError Either Rate]
 }

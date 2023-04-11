@@ -10,9 +10,9 @@ class Program[F[_]: Functor](
     ratesService: RatesService[F]
 ) extends Algebra[F] {
 
-  override def get(request: Protocol.GetRatesRequest): F[ProgramError Either Rate] =
+  override def getExchangeRate(request: Protocol.GetRatesRequest): F[ProgramError Either Rate] =
     for {
-      rateOrServiceError <- ratesService.get(Rate.Pair(request.from, request.to))
+      rateOrServiceError <- ratesService.getExchangeRate(CurrenciesPair(request.from, request.to))
       rateOrProgramError = rateOrServiceError.left.map(ProgramError.fromServiceError)
     } yield rateOrProgramError
 

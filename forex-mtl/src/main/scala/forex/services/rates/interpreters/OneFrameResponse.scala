@@ -1,6 +1,6 @@
 package forex.services.rates.interpreters
 
-import forex.domain.Rate.Pair
+import forex.domain.CurrenciesPair
 import forex.domain.{ Currency, Price, Rate, Timestamp }
 import io.circe.{ Decoder, HCursor }
 
@@ -16,7 +16,7 @@ object OneFrameResponse {
       timestamp <- c.downField("time_stamp").as[OffsetDateTime]
     } yield
       Rate(
-        pair = Pair(from, to),
+        pair = CurrenciesPair(from, to),
         price = Price(price),
         timestamp = Timestamp(timestamp)
     )

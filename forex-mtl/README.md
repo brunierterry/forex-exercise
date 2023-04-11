@@ -154,3 +154,15 @@ Then, I rewrote `fromString` method, `currencyQueryParam` parsing logic, and `ht
 In this commit, I focussed on parsing the JSON response from OneFrame. So I added a dependency to blaze client and started a temporary naive implementation of OneFrame service that directly serve its response directly as Proxy's response.
 
 To save time, I intentionally use `http` rather than `https` and `Uri.unsafeFromString()`. I also updated `http4s` version.
+
+
+## Step 3 Using a cache
+
+I choose to just run a redis docker instance locally.
+```shell
+docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
+```
+
+Then I implemented the naive caching strategy that update all the cache directly on a request on proxy, when the cache is outdated, in a blocking way. Next steps will be to add test and improve caching logic to be non-blocking.
+
+I also introduced and implemented new concepts (as traits and objects) in the code base, such as `CurrenciesPairDirection`, `Freshness` and `TransitiveExchangeRate`, to decompose the calculations in small steps and improve long term readability.

@@ -10,13 +10,20 @@ case class ApplicationConfig(
 case class HttpConfig(
     host: String,
     port: Int,
-    timeout: FiniteDuration
+    timeout: FiniteDuration,
 )
 case class WebServicesConfig(
     oneFrame: OneFrameConfig,
+    redis: RedisConfig,
 )
 
 case class OneFrameConfig(
+    host: String,
+    port: Int,
+    freshness: FiniteDuration,
+)
+
+case class RedisConfig(
     host: String,
     port: Int,
 )

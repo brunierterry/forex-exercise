@@ -32,7 +32,7 @@ class RatesHttpRoutes[F[_]: Sync](rates: RatesProgram[F]) extends Http4sDsl[F] {
                          missingParamMessage = "Missing \"to\" currency parameter."
                        )
           ratesRequest = RatesProgramProtocol.GetRatesRequest(fromCurrency, toCurrency)
-          rate <- EitherT(rates.get(ratesRequest)).leftMap { programError =>
+          rate <- EitherT(rates.getExchangeRate(ratesRequest)).leftMap { programError =>
                    BadRequest(programError.msg)
                  }
         } yield Ok(rate.asGetApiResponse)

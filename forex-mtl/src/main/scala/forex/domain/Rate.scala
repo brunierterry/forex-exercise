@@ -1,22 +1,30 @@
 package forex.domain
 
+import io.circe.{ Decoder, Encoder }
+
 case class Rate(
-    pair: Rate.Pair,
+    pair: CurrenciesPair,
     price: Price,
     timestamp: Timestamp
-)
+) extends OppositeBuilder[Rate]
+    with Timestamp.Freshness {
+  override def from: Currency = pair.from
+
+  override def to: Currency = pair.to
+
+  def opposite: Rate =
+    copy(
+      pair = pair.opposite,
+      price = if (price.value.equals(BigDecimal(0.0))) Price(BigDecimal(0.0)) else Price(1 / price.value)
+    )
+}
 
 object Rate {
-  final case class Pair(
-      from: Currency,
-      to: Currency
-  ) {
-    def isOnSameCurrency: Boolean =
-      from == to
-  }
 
-  object Pair {
-    def ofSameCurrency(currency: Currency) =
-      Pair(currency, currency)
-  }
+  implicit val decodeRate: Decoder[Rate] =
+    Decoder.forProduct3("pair", "price", "timestamp")(Rate.apply)
+
+  implicit val encodeRate: Encoder[Rate] =
+    Encoder.forProduct3("pair", "price", "timestamp")(rate => (rate.pair, rate.price, rate.timestamp))
+
 }

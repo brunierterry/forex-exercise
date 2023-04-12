@@ -1,7 +1,7 @@
-package forex.services.rates.interpreters
+package forex.domain.logic
 
-import forex.domain.{ CurrenciesPair, Currency, Price, Rate, Timestamp }
-import Currency.USD
+import forex.domain.Currency.USD
+import forex.domain._
 
 sealed trait TransitiveExchangeRate[AsRate] {
   def referenceValue: AsRate
@@ -11,7 +11,10 @@ sealed trait TransitiveExchangeRate[AsRate] {
 
 object TransitiveExchangeRate {
 
-  private val ReferenceCurrency: Currency = USD
+  private[domain] val ReferenceCurrency: Currency = USD
+
+  def makeReferenceCurrenciesPair(currency: Currency) =
+    CurrenciesPair(ReferenceCurrency, currency)
 
   case class ReferenceRateWrapper[AsRate](referenceValue: AsRate) extends TransitiveExchangeRate[AsRate] {
     override def map[A](f: AsRate => A): ReferenceRateWrapper[A] =
@@ -23,26 +26,23 @@ object TransitiveExchangeRate {
       OppositeToRefRateWrapper(f(referenceValue))
   }
 
-  // TODO PR (high) test
-  // TODO PR (low) remove generic type, as it became useless
-  def pairAsTransitiveExchangeRates[AsRate <: CurrenciesPair](pairToExpressAsTransitiveRefs: AsRate)(
-      build: (Currency, Currency) => AsRate
-  ): List[TransitiveExchangeRate[AsRate]] =
+  def pairAsTransitiveExchangeRates(
+      pairToExpressAsTransitiveRefs: CurrenciesPair
+  ): List[TransitiveExchangeRate[CurrenciesPair]] =
     pairToExpressAsTransitiveRefs match {
       case CurrenciesPair(from, ReferenceCurrency) =>
-        List(OppositeToRefRateWrapper(build(ReferenceCurrency, from)))
+        List(OppositeToRefRateWrapper(makeReferenceCurrenciesPair(currency = from)))
 
       case CurrenciesPair(ReferenceCurrency, _) =>
         List(ReferenceRateWrapper(pairToExpressAsTransitiveRefs))
 
       case CurrenciesPair(from, to) =>
         List(
-          OppositeToRefRateWrapper(referenceValue = build(ReferenceCurrency, from)),
-          ReferenceRateWrapper(referenceValue = build(ReferenceCurrency, to))
+          OppositeToRefRateWrapper(referenceValue = makeReferenceCurrenciesPair(currency = from)),
+          ReferenceRateWrapper(referenceValue = makeReferenceCurrenciesPair(currency = to))
         )
     }
 
-  // TODO PR (high) - Add tests
   def rateByTransitivity(oppositeWrapper: OppositeToRefRateWrapper[Rate],
                          refWrapper: ReferenceRateWrapper[Rate]): Rate =
     Rate(
@@ -51,13 +51,14 @@ object TransitiveExchangeRate {
       timestamp = Timestamp.fromOldest(oppositeWrapper.referenceValue.timestamp, refWrapper.referenceValue.timestamp)
     )
 
-  // TODO PR (low) - consider returning error on price = 0 as it would make no sense
-  private def priceByTransitivity(oppositeToRef: OppositeToRefRateWrapper[Price],
-                                  reference: ReferenceRateWrapper[Price]): Price = {
+  // TODO PR (low) - consider returning error on price <= 0 as it would make no sense & consider as error if returned by the cache or OneFrame
+  private[domain] def priceByTransitivity(oppositeToRef: OppositeToRefRateWrapper[Price],
+                                          reference: ReferenceRateWrapper[Price]): Price = {
     val zero =
       BigDecimal(0)
     val mergedPrice: BigDecimal =
-      if (oppositeToRef.referenceValue.value.eq(zero)) zero
+      if (oppositeToRef.referenceValue.value == reference.referenceValue.value) BigDecimal(1)
+      else if (oppositeToRef.referenceValue.value == zero) zero
       else reference.referenceValue.value / oppositeToRef.referenceValue.value
     Price(mergedPrice)
   }

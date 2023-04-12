@@ -50,10 +50,8 @@ resolvers +=
   "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"
 
 libraryDependencies ++= Seq(
-  compilerPlugin(Libraries.kindProjector),
   Libraries.cats,
   Libraries.catsEffect,
-  Libraries.fs2,
   Libraries.http4sDsl,
   Libraries.http4sServer,
   Libraries.http4sClient,

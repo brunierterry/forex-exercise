@@ -26,7 +26,8 @@ import io.circe.parser.decode
 import com.redis.RedisClient
 import forex.domain.CurrenciesPair.PairCode
 import forex.domain.Currency.USD
-import forex.services.rates.interpreters.TransitiveExchangeRate.{
+import forex.domain.logic.TransitiveExchangeRate
+import forex.domain.logic.TransitiveExchangeRate.{
   pairAsTransitiveExchangeRates,
   OppositeToRefRateWrapper,
   ReferenceRateWrapper
@@ -35,14 +36,13 @@ import io.circe.generic.auto._
 import io.circe.syntax._
 
 import scala.jdk.DurationConverters
+import org.slf4j.LoggerFactory
 
 class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra[F] {
   implicit private val cs: ContextShift[IO] = IO.contextShift(global)
 
-  // TODO PR (high) - Add Debugs logs on key moment
-  // "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5"
-//    private val logger = com.typesafe.scalalogging.Logger(getClass)
-//  logger.debug("Hello, logging!")
+  // TODO PR (low) - Handle dependency in a better way
+  private def logger = LoggerFactory.getLogger(this.getClass)
 
   // TODO PR (high) - consider moving dependencies outside the service to avoid multiple instantiations
   private val blockingPool           = Executors.newFixedThreadPool(5)
@@ -77,10 +77,10 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
   }
 
   private lazy val requestAllReferenceRateWrappers = {
-    println(s""" ### requestAllReferenceRateWrappers ###
-         |requestAllReferenceRateWrappersUri: $requestAllReferenceRateWrappersUri
-         |token: 10dc303535874aeccc86a8251e6992f5
-         |""".stripMargin) // TODO PR DEBUG
+    logger.debug(s"""requestAllReferenceRateWrappers :
+         |requestAllReferenceRateWrappersUri=$requestAllReferenceRateWrappersUri ;
+         |token=10dc303535874aeccc86a8251e6992f5
+         |""".stripMargin.replace('\n', ' '))
     GET(
       requestAllReferenceRateWrappersUri,
       Header.Raw(
@@ -101,9 +101,12 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
   // TODO PR (high) - Implement fetching from cache + refreshing on too old
   // TODO PR (low) - Implement refreshing in a different fiber
   private def getRateForDifferentCurrenciesPair(pair: CurrenciesPair): F[RatesServiceError Either Rate] = {
-
     val transitivePairs: Seq[TransitiveExchangeRate[CurrenciesPair]] =
-      pairAsTransitiveExchangeRates(pair)(CurrenciesPair.apply)
+      pairAsTransitiveExchangeRates(pair)
+
+    logger.debug(s"""getRateForDifferentCurrenciesPair(pair=$pair) :
+         |Transitive Exchange Rate pairs = $transitivePairs
+         |""".stripMargin.replace('\n', ' '))
 
     def isRecentEnoughRate(rate: Rate): Boolean =
       rate.moreRecentThan(DurationConverters.ScalaDurationOps(oneFrameConfig.freshness).toJava)
@@ -115,11 +118,9 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
 
     errorOrRate.left
       .flatMap { _ =>
-        println(s"""
-                 |
-                 |RECENT ENOUGH RATE NOT FOUND !
-                 |
-                 |""".stripMargin) // TODO PR DEBUG - TODO improve debug message
+        logger.debug(s"""getRateForDifferentCurrenciesPair(pair=$pair) :
+             |Cache data too old
+             |""".stripMargin.replace('\n', ' '))
         refreshCache()
         getRateFromCache(transitivePairs).left
           .map(
@@ -133,15 +134,8 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
   // TODO PR (high) - improve this naive implementation - consider using a pool
   // TODO PR (low) - use returned type to handle error in a more elegant way
   private def refreshCache(): Unit = {
+    logger.info("refreshCache() : Start")
     val preparedRequest = httpClient.expect[String](requestAllReferenceRateWrappers)
-
-    println(s"""
-         |
-         |########################################
-         |RESHRESH CACHE !
-         |########################################
-         |
-         |""".stripMargin) // TODO PR INFO - improve
 
     // TODO PR (low) - find a more elegant way to lift IO as an Applicative F
     val results = preparedRequest.unsafeRunSync()
@@ -154,23 +148,27 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
     errorOrRates.foreach { rates =>
       val areUpdatesSucceeded: Seq[(PairCode, Boolean)] =
         rates.map { rate =>
-          println(s"rate: $rate") // TODO PR DEBUG
+          logger.debug(s"""refreshCache() :
+               |Fresh rate from OneFrame service = $rate
+               |""".stripMargin.replace('\n', ' '))
           val succeeded =
             redis.set(rate.pairCode, rate.asJson)
           (rate.pairCode, succeeded)
         }
 
-      println(s"Cache updated count: ${areUpdatesSucceeded.size} / ${referencePairCodes.size}") // TODO PR DEBUG
       val notUpdated: Seq[PairCode] = areUpdatesSucceeded
         .filterNot { case (_, succeeded) => succeeded }
         .map { case (pairCode, _) => pairCode }
       val hasNotUpdatedRefs = notUpdated.nonEmpty
-      if (hasNotUpdatedRefs) { // TODO PR WARNING
+      if (hasNotUpdatedRefs && logger.isWarnEnabled) { // TODO PR WARNING
         notUpdated.foreach { pairCode =>
-          println(s"Not valid value returned by OneFrame for Reference Pair: $pairCode") // TODO PR WARNING
+          logger.warn(s"""refreshCache() :
+               |No valid value returned by OneFrame for Reference Pair = $pairCode
+               |""".stripMargin.replace('\n', ' '))
         }
       }
     }
+    logger.info("refreshCache() : End")
   }
 
   private def getRateFromCache(
@@ -200,35 +198,39 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
           decodeRateFromCacheOrServiceError(rateAsString)
             .map(OppositeToRefRateWrapper.apply): Either[RatesServiceError, TransitiveExchangeRate[Rate]]
       }
-      mergedRate <- errorsOrRates match {
-                     case List(Left(error), _) =>
-                       Left(error)
-
-                     case List(_, Left(error)) =>
-                       Left(error)
-
-                     case List(Right(OppositeToRefRateWrapper(referenceRateForOpposite))) =>
-                       Right(referenceRateForOpposite.opposite)
-
-                     case List(Right(ReferenceRateWrapper(referenceRate))) =>
-                       Right(referenceRate)
-
-                     case List(
-                         Right(oppositeWrapper: OppositeToRefRateWrapper[Rate]),
-                         Right(referenceWrapper: ReferenceRateWrapper[Rate])
-                         ) =>
-                       // TODO PR (high) - Dedicated method + tests
-//                       TODO PR NEXT - INVESTIGATE AND TEST
-                       val mergedRate = TransitiveExchangeRate.rateByTransitivity(oppositeWrapper, referenceWrapper)
-                       Right(mergedRate)
-
-                     case _ =>
-                       Left(RatesServiceError.OneFrameLookupFailed(s"Currently impossible to calculate this rate."))
-                   }
-      _ <- Right(println(s"""
-           |mergedRate: ${mergedRate}
-           |""".stripMargin)) // TODO PR DEBUG
+      mergedRate <- mergeErrorsOrRates(errorsOrRates)
+      _ <- Right(
+            logger.debug(s"""encodeAndMergeRates() :
+             |mergedRate = $mergedRate
+             |""".stripMargin.replace('\n', ' '))
+          )
     } yield mergedRate
+
+  private def mergeErrorsOrRates(errorsOrRates: List[Either[RatesServiceError, TransitiveExchangeRate[Rate]]]) =
+    errorsOrRates match {
+      case List(Left(error), _) =>
+        Left(error)
+
+      case List(_, Left(error)) =>
+        Left(error)
+
+      case List(Right(OppositeToRefRateWrapper(referenceRateForOpposite))) =>
+        Right(referenceRateForOpposite.opposite)
+
+      case List(Right(ReferenceRateWrapper(referenceRate))) =>
+        Right(referenceRate)
+
+      case List(
+          Right(oppositeWrapper: OppositeToRefRateWrapper[Rate]),
+          Right(referenceWrapper: ReferenceRateWrapper[Rate])
+          ) =>
+        val mergedRate =
+          TransitiveExchangeRate.rateByTransitivity(oppositeWrapper, referenceWrapper)
+        Right(mergedRate)
+
+      case _ =>
+        Left(RatesServiceError.OneFrameLookupFailed(s"Currently impossible to calculate this rate."))
+    }
 
   private def decodeRateFromCacheOrServiceError(rateAsString: String) = {
     val decodedOrError = decode[Rate](rateAsString)
@@ -241,7 +243,7 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
 
   private def getTransitiveRatesAsStringsFromCache(
       transitivePairs: Seq[TransitiveExchangeRate[CurrenciesPair]]
-  ): Option[List[TransitiveExchangeRate[String]]] = {
+  ): Option[List[TransitiveExchangeRate[String]]] =
     transitivePairs match {
       case List(oppositeToRefPair: OppositeToRefRateWrapper[CurrenciesPair]) =>
         getOppositeRefRatesAsStringsFromCache(oppositeToRefPair)
@@ -263,7 +265,6 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
       case _ =>
         None
     }
-  }
 
   // TODO PR (low) Test - important, burt requires stub or mock for redis
   private def getReferenceRatesAsStringsFromCache(referencePairWrapper: ReferenceRateWrapper[CurrenciesPair]) =
@@ -285,11 +286,16 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
       RatesServiceError.OneFrameDecodeFailed(message)
     }
 
-  private def getRateForSameCurrencyPair(currency: Currency): F[RatesServiceError Either Rate] =
-    Rate(
+  private def getRateForSameCurrencyPair(currency: Currency): F[RatesServiceError Either Rate] = {
+    val rate = Rate(
       pair = CurrenciesPair.ofSameCurrency(currency),
       price = Price(BigDecimal(1)),
       timestamp = Timestamp.now
-    ).asRight[RatesServiceError].pure[F]
+    )
+    logger.debug(s"""getRateForSameCurrencyPair(currency=$currency) :
+         |Generate neutral rate on same currency = $rate
+         |""".stripMargin.replace('\n', ' '))
+    rate.asRight[RatesServiceError].pure[F]
+  }
 
 }

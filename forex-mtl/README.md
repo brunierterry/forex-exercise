@@ -166,3 +166,16 @@ docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:lat
 Then I implemented the naive caching strategy that update all the cache directly on a request on proxy, when the cache is outdated, in a blocking way. Next steps will be to add test and improve caching logic to be non-blocking.
 
 I also introduced and implemented new concepts (as traits and objects) in the code base, such as `CurrenciesPairDirection`, `Freshness` and `TransitiveExchangeRate`, to decompose the calculations in small steps and improve long term readability.
+
+## Step 4 Improvements - Logs, Tests
+
+Now the Proxy service works, let's improve reliability and maintainability.
+
+I added proper logs management with existing dependency. I also removed some unused dependencies. They always can be re-added later if needed, thanks to commits' history.
+
+Usually I prefer working using T&TDD principe, i.e. "Types and Tests Driven Development". However, as I was quite busy, I choose to drive my development by types only as I had a clear idea of the design to implement, and it appeared relatively complex (even though I'm a newcomer to cats).
+
+Let's add some basic tests now to ensure the correct behavior of the key parts of the code. I created tests for `TransitiveExchangeRate` logic as it's the most sensible logic in the proxy service. I also started to add tests for other domain classes such as `Timestamp`.
+
+I also performed some refactoring to improve readability.
+

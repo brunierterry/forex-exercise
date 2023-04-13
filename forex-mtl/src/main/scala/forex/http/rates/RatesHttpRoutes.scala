@@ -21,7 +21,7 @@ class RatesHttpRoutes[F[_]: Sync](rates: RatesProgram[F]) extends Http4sDsl[F] {
 
   private val httpRoutes: HttpRoutes[F] = HttpRoutes.of[F] {
     case GET -> Root :? FromQueryParam(from) +& ToQueryParam(to) =>
-      val validResponseOrErrorResponse =
+      val errorResponseOrValidResponse =
         for {
           fromCurrency <- paramOptionalValidationToRouteWrapper(
                            paramValidationOpt = from,
@@ -37,7 +37,7 @@ class RatesHttpRoutes[F[_]: Sync](rates: RatesProgram[F]) extends Http4sDsl[F] {
                  }
         } yield Ok(rate.asGetApiResponse)
 
-      validResponseOrErrorResponse.value.flatMap {
+      errorResponseOrValidResponse.value.flatMap {
         case Right(successResponse) => successResponse
         case Left(failureResponse)  => failureResponse
       }
@@ -53,9 +53,9 @@ class RatesHttpRoutes[F[_]: Sync](rates: RatesProgram[F]) extends Http4sDsl[F] {
     paramValidation.toEither.left.map(_.head)
 
   private def eitherToResponseEitherWrapper[E, T](
-      valueOrError: Either[E, T]
+                                                   errorOrValue: Either[E, T]
   )(makeResponse: E => F[Response[F]]): EitherBadResponseWrapper[T] = {
-    val validParamOrBadRequest = valueOrError.left.map(makeResponse)
+    val validParamOrBadRequest = errorOrValue.left.map(makeResponse)
     EitherT(validParamOrBadRequest.pure[F])
   }
 

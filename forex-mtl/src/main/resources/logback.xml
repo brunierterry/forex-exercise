@@ -9,6 +9,8 @@
         <appender-ref ref="STDOUT" />
     </root>
 
+    <logger name="forex.services.rates.interpreters" level="INFO"/>
+
     <logger name="http4s"/>
   </configuration>
 

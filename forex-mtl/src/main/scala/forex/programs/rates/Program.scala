@@ -12,9 +12,9 @@ class Program[F[_]: Functor](
 
   override def getExchangeRate(request: Protocol.GetRatesRequest): F[ProgramError Either Rate] =
     for {
-      rateOrServiceError <- ratesService.getExchangeRate(CurrenciesPair(request.from, request.to))
-      rateOrProgramError = rateOrServiceError.left.map(ProgramError.fromServiceError)
-    } yield rateOrProgramError
+      serviceErrorOrRate <- ratesService.getExchangeRate(CurrenciesPair(request.from, request.to))
+      programErrorOrRate = serviceErrorOrRate.left.map(ProgramError.fromServiceError)
+    } yield programErrorOrRate
 
 }
 

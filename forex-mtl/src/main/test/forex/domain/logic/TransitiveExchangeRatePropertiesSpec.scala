@@ -1,6 +1,9 @@
 package forex.domain.logic
 
-import forex.domain.DomainGenerators._
+import forex.domain.generators.CurrenciesPairGenerator._
+import forex.domain.generators.CurrencyGenerator._
+import forex.domain.generators.PriceGenerator._
+import forex.domain.generators.TransitiveExchangeRateGenerator._
 import org.scalacheck.Properties
 import org.scalacheck.Prop.forAll
 import forex.domain._

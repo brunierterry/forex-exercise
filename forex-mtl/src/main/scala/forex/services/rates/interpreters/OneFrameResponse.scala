@@ -8,7 +8,7 @@ import java.time.OffsetDateTime
 
 object OneFrameResponse {
 
-  implicit val decodeRateFromResponse: Decoder[Rate] = (c: HCursor) =>
+  implicit val rateDecoderFromResponse: Decoder[Rate] = (c: HCursor) =>
     for {
       from <- c.downField("from").as[Currency]
       to <- c.downField("to").as[Currency]

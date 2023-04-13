@@ -21,10 +21,10 @@ case class Rate(
 
 object Rate {
 
-  implicit val decodeRate: Decoder[Rate] =
+  implicit val rateDecoder: Decoder[Rate] =
     Decoder.forProduct3("pair", "price", "timestamp")(Rate.apply)
 
-  implicit val encodeRate: Encoder[Rate] =
+  implicit val rateEncoder: Encoder[Rate] =
     Encoder.forProduct3("pair", "price", "timestamp")(rate => (rate.pair, rate.price, rate.timestamp))
 
 }

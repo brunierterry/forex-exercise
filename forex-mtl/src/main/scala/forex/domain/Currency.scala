@@ -12,10 +12,10 @@ object Currency {
   implicit val show: Show[Currency] =
     Show.show(_.toString)
 
-  implicit val decodeCurrency: Decoder[Currency] =
+  implicit val currencyDecoder: Decoder[Currency] =
     Decoder.decodeString.emap(fromString)
 
-  implicit val encodeCurrency: Encoder[Currency] = new Encoder[Currency] {
+  implicit val currencyEncoder: Encoder[Currency] = new Encoder[Currency] {
     final def apply(currency: Currency): Json =
       Json.fromString(currency.toString)
   }

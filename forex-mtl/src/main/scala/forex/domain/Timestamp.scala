@@ -22,7 +22,7 @@ object Timestamp {
   def now: Timestamp =
     Timestamp(OffsetDateTime.now.atZoneSameInstant(ZoneId.of("UTC")).toOffsetDateTime)
 
-  implicit val decodeTimestamp: Decoder[Timestamp] = new Decoder[Timestamp] {
+  implicit val timestampDecoder: Decoder[Timestamp] = new Decoder[Timestamp] {
     final def apply(c: HCursor): Decoder.Result[Timestamp] =
       for {
         value <- c.value.as[OffsetDateTime]
@@ -31,7 +31,7 @@ object Timestamp {
       }
   }
 
-  implicit val encodeTimestamp: Encoder[Timestamp] = new Encoder[Timestamp] {
+  implicit val timestampEncoder: Encoder[Timestamp] = new Encoder[Timestamp] {
     final def apply(timestamp: Timestamp): Json =
       Json.fromString(timestamp.value.toString)
   }

@@ -26,6 +26,7 @@ object TransitiveExchangeRate {
       OppositeToRefRateWrapper(f(referenceValue))
   }
 
+  // TODO PR (high) Improve quality of code by replacing list by something better, like union types in scala 3
   def pairAsTransitiveExchangeRates(
       pairToExpressAsTransitiveRefs: CurrenciesPair
   ): List[TransitiveExchangeRate[CurrenciesPair]] =

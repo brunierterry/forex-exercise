@@ -1,7 +1,15 @@
 import Dependencies._
 
-name := "forex"
-version := "1.0.1"
+val appName = "forex-proxy"
+val versionCode = "1.1.0"
+val author = "BrunierTerry"
+
+name := appName
+version := versionCode
+mainClass := Some("forex.Main")
+
+assembly / mainClass := Some("forex.Main")
+assembly / assemblyJarName := s"${appName}_${author}_${versionCode}.jar"
 
 scalaVersion := "2.13.5"
 scalacOptions ++= Seq(
@@ -63,7 +71,7 @@ libraryDependencies ++= Seq(
   Libraries.pureConfig,
   Libraries.redisClient,
   Libraries.logback,
-  Libraries.scalaTest        % Test,
-  Libraries.scalaCheck       % Test,
-  Libraries.catsScalaCheck   % Test
+  Libraries.scalaTest      % Test,
+  Libraries.scalaCheck     % Test,
+  Libraries.catsScalaCheck % Test
 )

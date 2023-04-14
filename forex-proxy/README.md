@@ -182,3 +182,22 @@ I also performed some refactoring to improve readability.
 ## Step 5 - Tests for OneFrameLive and QoC improvements
 
 I finished the tests for OneFrameLive and improved the quality of code.
+
+## Final step - Packaging
+Updated the build and packaged this version of the application in the JAR: [forex-proxy_BrunierTerry_1.1.0.jar](https://drive.google.com/file/d/1eHWH0ENBhCYtkeXhGTtq2ImbhPkBkPvN/view?usp=sharing).
+
+I added deployment and configuration information in the general [./README.md]((https://github.com/brunierterry/forex-exercise/blob/master/README.md))
+
+## Further improvements
+
+As I don't know cats well yet, I preferred to focus on the feature rather than having a meaningful used of monads in the code. THis is the main thing I want to improve in this implementation.
+
+I also would like to used redis thread pools and scheduled cache refresh (calling OneFrame service), so the query to Forex Proxy service won't be blocked by network/cache latencies.
+
+I intentionally let my TODO comments in the code base, so we can discuss those points together during the technical interview.
+
+## Conclusion
+
+Working on this exercise was very interesting. This is not only testing algorithm or programming skills, but a wide skills related to software development. 
+
+This is a very wise technical examination. That made me even more exited to join Paidy!

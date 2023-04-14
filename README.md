@@ -1,13 +1,52 @@
+[Terry BRUNIER - 2023/04/14]
+
 # Achieved work
-The assumtions, analysis and the description of the work done for this exercise are detailed in:
-[forex-mtl/README.md](https://github.com/brunierterry/forex-exercise/blob/master/forex-mtl/README.md)
 
+## Work description
+The assumptions, analysis and the description of the work done for this exercise are detailed in:
 
+[/forex-proxy/README.md](https://github.com/brunierterry/forex-exercise/blob/master/forex-proxy/README.md)
 
-------
+## Deliverable
 
+### Requirements
+You will need to have [Docker Desktop ](https://www.docker.com/products/docker-desktop/) installed on the machine you would like to run the Proxy server.
 
-------
+N.B.:
+1. You might need administrator privileges to install required softwares.
+2. Commends and examples below are based on default configuration. You should adapt them and update [application.conf](https://github.com/brunierterry/forex-exercise/blob/master/forex-proxy/src/main/resources/application.conf) file accordingly with your system, for example if some ports are already in use.
+3. Steps described belows gives commends examples for a unix system (macOS 13.x). You would have to adapt examples to your system.
+4. Scala `2.13.5` and Java `17.0.4` on your environment.
+
+#### One Frame service
+OneFrame service must be running. Please:
+1. Ensure to have [OneFrame's docker image](https://hub.docker.com/r/paidyinc/one-frame) locally with the shel command `docker pull paidyinc/one-frame:latest`
+2. Run the service with the command `docker run -p 8080:8080 paidyinc/one-frame`
+
+#### Redis service
+Redis server service must be running. Please:
+docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
+1. Ensure to have [Redis docker image](https://hub.docker.com/r/redis/redis-stack) locally with the shel command `docker pull redis/redis-stack-server:latest`
+2. Run the service with the command `docker run -d --name redis-stack -p 6379:6379  redis/redis-stack-server`
+
+### How to run - Option 1: IDE
+My implementation and all the commits can be viewed on GitHub and downloaded:
+
+https://github.com/brunierterry/forex-exercise
+
+The `Main.scala` class file can be run on a modern IDE (tested with IntelliJ IDEA). It will bind on the address `0.0.0.0:8081'.
+
+### How to run - Option 2: Scala commend
+Download [forex-proxy_BrunierTerry_1.1.0.jar](https://drive.google.com/file/d/1eHWH0ENBhCYtkeXhGTtq2ImbhPkBkPvN/view?usp=share_link) (jar file) from google drive and run it locally:
+
+```shell
+# in the folder containing the jar:
+scala forex-proxy_BrunierTerry_1.1.0.jar
+```
+
+### Send query to Proxy service
+Send a `GET` request to `0.0.0.0:8081/rates?from=USD&to=JPY` (`USD` and `JPY` can be replaced by other valid currency codes). You can use shell commend tools like httpie, of UI tools such as Postman.
+
 
 
 ------

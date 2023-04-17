@@ -2,51 +2,17 @@ package forex.services.rates.interpreters
 
 import forex.domain.Rate
 import forex.domain.generators.RateGenerator.genValidRate
-import forex.domain.generators.TransitiveExchangeRateGenerator.{
-  genOppositeToRefRateWrapper,
-  genReferenceRateWrapper,
-  genTransitiveExchangeRate,
-  genValidTransitiveWrappedRates
-}
-import forex.domain.logic.TransitiveExchangeRate
-import forex.domain.logic.TransitiveExchangeRate._
+import forex.domain.generators.TransitiveReferenceRatesWrapperGenerator._
+import forex.domain.logic.TransitiveReferenceRatesWrapper
+import forex.domain.logic.TransitiveReferenceRatesWrapper._
 import forex.services.rates.errors.RatesServiceError
 import io.circe.syntax.EncoderOps
-import org.scalacheck.Prop.{ forAll, forAllNoShrink }
+import org.scalacheck.Prop.forAllNoShrink
 import org.scalacheck.{ Gen, Properties }
 import forex.services.rates.interpreters.OneFrameLive._
 
 // TODO PR (high) improve testing by improving dependencies management
 object OneFrameLivePropertiesSpec extends Properties("OneFrameLive") {
-
-  private val decodingError: RatesServiceError =
-    RatesServiceError.OneFrameDecodeFailed("Decoding has failed")
-
-  private val genOneFrameDecodeFailed: Gen[RatesServiceError] =
-    Gen.const(decodingError)
-
-  private val genErrorOrWrapper: Gen[Either[RatesServiceError, TransitiveExchangeRate[Rate]]] =
-    Gen.either(genOneFrameDecodeFailed, genTransitiveExchangeRate(genValidRate))
-
-  private val genListContainingError: Gen[List[Either[RatesServiceError, TransitiveExchangeRate[Rate]]]] =
-    for {
-      listOfErrorsAndWrappers <- Gen.nonEmptyListOf(genErrorOrWrapper)
-      positionToReplaceByError <- Gen.choose(0, listOfErrorsAndWrappers.size - 1)
-    } yield listOfErrorsAndWrappers.updated(positionToReplaceByError, Left(decodingError))
-
-  private val genInvalidListOf2TransitiveExchangeRateWrappers
-    : Gen[List[Either[RatesServiceError, TransitiveExchangeRate[Rate]]]] =
-    for {
-      refRateWrapper1 <- genReferenceRateWrapper(genValidRate)
-      refRateWrapper2 <- genReferenceRateWrapper(genValidRate)
-      oppositeWrapper1 <- genOppositeToRefRateWrapper(genValidRate)
-      oppositeWrapper2 <- genOppositeToRefRateWrapper(genValidRate)
-      invalidCombinationsOf2Wrappers <- Gen.oneOf(
-                                         Gen.const(List(Right(oppositeWrapper1), Right(oppositeWrapper2))),
-                                         Gen.const(List(Right(refRateWrapper1), Right(refRateWrapper2))),
-                                         Gen.const(List(Right(refRateWrapper1), Right(oppositeWrapper2))),
-                                       )
-    } yield invalidCombinationsOf2Wrappers
 
   private val genValidRateAndOneRateJsonAttributeOrSubAttribute =
     for {
@@ -55,82 +21,9 @@ object OneFrameLivePropertiesSpec extends Properties("OneFrameLive") {
     } yield (validRate, attributeKey)
 
   private def encodeRatesInTransitivityWrappers(
-      wrappersOnValidRates: List[TransitiveExchangeRate[Rate]]
-  ): List[TransitiveExchangeRate[String]] =
-    wrappersOnValidRates.map(wrapper => wrapper.map(rate => rate.asJson.toString))
-
-  property(
-    "mergeErrorsOrRates(emptyList) on empty list gives an error"
-  ) = forAll(Gen.const(List.empty[Either[RatesServiceError, TransitiveExchangeRate[Rate]]])) { emptyList =>
-    val expectedError =
-      Left(RatesServiceError.OneFrameLookupFailed(s"Currently impossible to calculate this rate."))
-    mergeErrorsOrRates(emptyList) == expectedError
-  }
-
-  property(
-    "mergeErrorsOrRates(listContainingAtLeastOneError) on a list containing at list one error gives an error"
-  ) = forAllNoShrink(genListContainingError) { listContainingAtLeastOneError =>
-    val hasRealisticDecodingError =
-      listContainingAtLeastOneError.take(2).exists(_.isLeft)
-
-    val expectedError =
-      if (hasRealisticDecodingError) Left(decodingError)
-      else Left(RatesServiceError.OneFrameLookupFailed(s"Currently impossible to calculate this rate."))
-
-    mergeErrorsOrRates(listContainingAtLeastOneError) == expectedError
-  }
-
-  property(
-    "mergeErrorsOrRates(invalidListOf2Wrappers) on a list containing at list one error gives an error"
-  ) = forAllNoShrink(genInvalidListOf2TransitiveExchangeRateWrappers) { invalidListOf2Wrappers =>
-    val expectedError =
-      Left(RatesServiceError.OneFrameLookupFailed(s"Currently impossible to calculate this rate."))
-
-    mergeErrorsOrRates(invalidListOf2Wrappers) == expectedError
-  }
-
-  property(
-    "mergeErrorsOrRates(singleOppositeRefWrapperOnRefRateA) on a list containing " +
-      "a single reference rate `A` wrapped as Opposite Ref (i.e. the ref rate `A` is the opposite of desired rate) " +
-      "give the opposite rate of `A`."
-  ) = forAllNoShrink(genValidRate) { referenceRateA =>
-    val singleOppositeRefWrapperOnRefRateA =
-      List(Right(OppositeToRefRateWrapper(referenceRateA)))
-    val result =
-      mergeErrorsOrRates(singleOppositeRefWrapperOnRefRateA)
-
-    result == Right(referenceRateA.opposite) // `opposite` method is PBT proven in dedicated spec.
-  }
-
-  property(
-    "mergeErrorsOrRates(singleReferenceWrapperOnRefRateB) on a list containing " +
-      "a single reference rate `B` wrapped as Reference (i.e. the ref rate `B` is the desired rate) " +
-      "give the rate `B`."
-  ) = forAllNoShrink(genValidRate) { referenceRateB =>
-    val singleReferenceWrapperOnRefRateB =
-      List(Right(ReferenceRateWrapper(referenceRateB)))
-    val result =
-      mergeErrorsOrRates(singleReferenceWrapperOnRefRateB)
-
-    result == Right(referenceRateB)
-  }
-
-  property(
-    "mergeErrorsOrRates(List(oppositeRefWrapperOnRefRateA, referenceWrapperOnRefRateB)) on a list containing, " +
-      "first, a reference rate `A` wrapped as Opposite Ref (i.e. the ref rate `A` is the opposite of desired rate), " +
-      "then, a reference rate `B` wrapped as Reference (i.e. the ref rate `B` is the desired rate) " +
-      "give a new rate C, which is the valid transitive combination of rates `A` and `B`."
-  ) = forAllNoShrink(genValidTransitiveWrappedRates) {
-    case (rateWrappedAsOppositeRef, rateWrappedAsRef) =>
-      val result =
-        mergeErrorsOrRates(List(Right(rateWrappedAsOppositeRef), Right(rateWrappedAsRef)))
-
-      val expectedRate: Either[RatesServiceError, Rate] =
-        // `rateByTransitivity` function is PBT proven in dedicated spec.
-        Right(rateByTransitivity(rateWrappedAsOppositeRef, rateWrappedAsRef))
-
-      result == expectedRate
-  }
+      wrappersOnValidRates: TransitiveReferenceRatesWrapper[Rate]
+  ): TransitiveReferenceRatesWrapper[String] =
+    wrappersOnValidRates.map(rate => rate.asJson.toString)
 
   property(
     "rateDecoderFromCacheOrServiceError(validRateEncodedAsString) on a valid encoded Rate " +
@@ -165,51 +58,47 @@ object OneFrameLivePropertiesSpec extends Properties("OneFrameLive") {
   }
 
   property(
-    "decodeWrappedTransitiveEncodedRates(wrappersOnValidRates) decode well-formed encoded rates, wrapped in same order"
-  ) = forAllNoShrink(Gen.nonEmptyListOf(genTransitiveExchangeRate(genValidRate))) {
-    case wrappersOnValidRates =>
-      val encodedRates =
-        encodeRatesInTransitivityWrappers(wrappersOnValidRates)
+    "decodeWrappedTransitiveEncodedRates(wrapper) decode well-formed encoded rates, wrapped in same order"
+  ) = forAllNoShrink(genTransitiveReferenceRatesWrapper(genValidRate)) { wrapper =>
+    val encodedRates =
+      encodeRatesInTransitivityWrappers(wrapper)
 
-      val expectedResult =
-        wrappersOnValidRates.map(Right.apply)
-
-      decodeWrappedTransitiveEncodedRates(encodedRates) == expectedResult
+    decodeWrappedTransitiveEncodedRates(encodedRates) == Right(wrapper)
   }
 
   property(
     "decodeAndMergeRates(wrappersOnValidRates) decode well-formed encoded rates, and then combine by transitivity"
-  ) = forAllNoShrink(genValidTransitiveWrappedRates) {
-    case (rateWrappedAsOppositeRef, rateWrappedAsRef) =>
-      val encodedRates =
-        encodeRatesInTransitivityWrappers(List(rateWrappedAsOppositeRef, rateWrappedAsRef))
+  ) = forAllNoShrink(genTransitiveReferenceRatesWrapper(genValidRate)) { wrapper =>
+    val encodedRates =
+      encodeRatesInTransitivityWrappers(wrapper)
 
-      val errorOrValidTransitivityWrappers: Either[RatesServiceError, List[TransitiveExchangeRate[String]]] =
-        Right(encodedRates)
+    val errorOrValidTransitivityWrappers: Either[RatesServiceError, TransitiveReferenceRatesWrapper[String]] =
+      Right(encodedRates)
 
-      val result =
-        decodeAndMergeRates(errorOrValidTransitivityWrappers)
+    val result =
+      decodeAndMergeRates(errorOrValidTransitivityWrappers)
 
-      // The expected result is an approximation as encoding and re-decoding a Rate change the precision.
-      // However, results are still consistent in normal workflow, as all rates are decoded from the cache.
-      val approxExpectedRate: Rate =
-        // `rateByTransitivity` function is PBT proven in dedicated spec.
-        rateByTransitivity(rateWrappedAsOppositeRef, rateWrappedAsRef)
+    // The expected result is an approximation as encoding and re-decoding a Rate change the precision.
+    // However, results are still consistent in normal workflow, as all rates are decoded from the cache.
+    val approxExpectedRate: Rate =
+      // `calculateRateFromReferences` function is PBT proven in dedicated spec.
+      calculateRateFromReferences(wrapper)
 
-      val sameAsExpectedPair: Boolean =
-        result.toOption.exists(_.pair == approxExpectedRate.pair)
-      val approximatelySameAsExpectedPrice: Boolean =
-        result.toOption.exists { resultRate =>
-          val smallDifference =
-            (resultRate.price.value - approxExpectedRate.price.value).toFloat
-          Math.abs(smallDifference) < 0.00000000001
-        }
-      val sameAsExpectedTimestamp: Boolean =
-        result.toOption.exists(_.timestamp == approxExpectedRate.timestamp)
+    val sameAsExpectedPair: Boolean = {
+      result.toOption.exists(_.pair == approxExpectedRate.pair)
+    }
+    val approximatelySameAsExpectedPrice: Boolean =
+      result.toOption.exists { resultRate =>
+        val smallDifference =
+          (resultRate.price.value - approxExpectedRate.price.value).toFloat
+        Math.abs(smallDifference) < 0.00000000001
+      }
+    val sameAsExpectedTimestamp: Boolean =
+      result.toOption.exists(_.timestamp == approxExpectedRate.timestamp)
 
-      sameAsExpectedPair &&
-      approximatelySameAsExpectedPrice &&
-      sameAsExpectedTimestamp
+    sameAsExpectedPair &&
+    approximatelySameAsExpectedPrice &&
+    sameAsExpectedTimestamp
   }
 
 }

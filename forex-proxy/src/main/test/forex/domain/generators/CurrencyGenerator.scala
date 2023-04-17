@@ -1,7 +1,7 @@
 package forex.domain.generators
 
 import forex.domain.Currency
-import forex.domain.logic.TransitiveExchangeRate.ReferenceCurrency
+import forex.domain.logic.TransitiveReferenceRatesWrapper.ReferenceCurrency
 import org.scalacheck.Gen
 
 object CurrencyGenerator {

@@ -26,11 +26,13 @@ import io.circe.parser.decode
 import com.redis.RedisClient
 import forex.domain.CurrenciesPair.PairCode
 import forex.domain.Currency.USD
-import forex.domain.logic.TransitiveExchangeRate
-import forex.domain.logic.TransitiveExchangeRate.{
-  pairAsTransitiveExchangeRates,
-  OppositeToRefRateWrapper,
-  ReferenceRateWrapper
+import forex.domain.logic.TransitiveReferenceRatesWrapper
+import forex.domain.logic.TransitiveReferenceRatesWrapper.{
+  calculateRateFromReferences,
+  pairAsTransitiveReferenceRates,
+  OppositeToRefRate,
+  ReferenceRate,
+  TransitiveRefRatesCouple
 }
 import io.circe.generic.auto._
 import io.circe.syntax._
@@ -113,11 +115,11 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
   // TODO PR (high) - Implement fetching from cache + refreshing on too old
   // TODO PR (low) - Implement refreshing in a different fiber
   private def getRateForDifferentCurrenciesPair(pair: CurrenciesPair): F[RatesServiceError Either Rate] = {
-    val transitivePairs: Seq[TransitiveExchangeRate[CurrenciesPair]] =
-      pairAsTransitiveExchangeRates(pair)
+    val transitivePairsWrapper: TransitiveReferenceRatesWrapper[CurrenciesPair] =
+      pairAsTransitiveReferenceRates(pair)
 
     logger.debug(s"""getRateForDifferentCurrenciesPair(pair=$pair) :
-         |Transitive Exchange Rate pairs = $transitivePairs
+         |Transitive Exchange Rate pairs = $transitivePairsWrapper
          |""".stripMargin.replace('\n', ' '))
 
     def isRecentEnoughRate(rate: Rate): Boolean =
@@ -126,7 +128,8 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
     val tooOldRatesError =
       RatesServiceError.OneFrameLookupFailed(s"Recent rates not found for ${pair.pairCode}")
     val errorOrRate: Either[RatesServiceError, Rate] =
-      getRateFromCache(transitivePairs).filterOrElse[RatesServiceError](isRecentEnoughRate, zero = tooOldRatesError)
+      getRateFromCache(transitivePairsWrapper)
+        .filterOrElse[RatesServiceError](isRecentEnoughRate, zero = tooOldRatesError)
 
     errorOrRate.left
       .flatMap { _ =>
@@ -134,7 +137,7 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
              |Cache data too old
              |""".stripMargin.replace('\n', ' '))
         refreshCache()
-        getRateFromCache(transitivePairs).left
+        getRateFromCache(transitivePairsWrapper).left
           .map(
             _ =>
               RatesServiceError.OneFrameLookupFailed(s"Recent rates not found for ${pair.pairCode}"): RatesServiceError
@@ -183,53 +186,42 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
   }
 
   private def getRateFromCache(
-      transitivePairs: Seq[TransitiveExchangeRate[CurrenciesPair]]
+      transitivePairs: TransitiveReferenceRatesWrapper[CurrenciesPair]
   ): Either[RatesServiceError, Rate] = {
-    val pairCodes =
-      transitivePairs.map(_.referenceValue.pairCode)
+    val wrappedPairCodes =
+      transitivePairs.map(_.pairCode)
     val errorOrCacheResults =
       getTransitiveRatesAsStringsFromCache(transitivePairs)
-        .toRight(RatesServiceError.OneFrameLookupFailed(s"Rates not found for ${pairCodes.mkString(" and ")}"))
+        .toRight(RatesServiceError.OneFrameLookupFailed(s"Rates not found for $wrappedPairCodes}"))
 
     decodeAndMergeRates(errorOrCacheResults)
   }
 
   private def getTransitiveRatesAsStringsFromCache(
-      transitivePairs: Seq[TransitiveExchangeRate[CurrenciesPair]]
-  ): Option[List[TransitiveExchangeRate[String]]] =
+      transitivePairs: TransitiveReferenceRatesWrapper[CurrenciesPair]
+  ): Option[TransitiveReferenceRatesWrapper[String]] =
     transitivePairs match {
-      case List(oppositeToRefPair: OppositeToRefRateWrapper[CurrenciesPair]) =>
-        getOppositeRefRatesAsStringsFromCache(oppositeToRefPair)
-          .map(List.apply(_))
+      case OppositeToRefRate(refUsedAsOpposite: CurrenciesPair) =>
+        getRateFromRedis(key = refUsedAsOpposite)
+          .map(OppositeToRefRate.apply)
 
-      case List(referenceRate: ReferenceRateWrapper[CurrenciesPair]) =>
-        getReferenceRatesAsStringsFromCache(referenceRate)
-          .map(List.apply(_))
+      case ReferenceRate(refDirectlyUsed: CurrenciesPair) =>
+        getRateFromRedis(key = refDirectlyUsed)
+          .map(ReferenceRate.apply)
 
-      case List(
-          oppositeToRefPair: OppositeToRefRateWrapper[CurrenciesPair],
-          referenceRate: ReferenceRateWrapper[CurrenciesPair]
-          ) =>
+      case TransitiveRefRatesCouple(fromRef, toRef) =>
         for {
-          oppositeRefRate <- getOppositeRefRatesAsStringsFromCache(oppositeToRefPair)
-          referenceRate <- getReferenceRatesAsStringsFromCache(referenceRate)
-        } yield List(oppositeRefRate, referenceRate)
+          oppositeRefRate <- getRateFromRedis(key = fromRef)
+          referenceRate <- getRateFromRedis(key = toRef)
+        } yield
+          TransitiveRefRatesCouple(
+            fromRef = oppositeRefRate,
+            toRef = referenceRate,
+          )
 
       case _ =>
         None
     }
-
-  // TODO PR (low) Test - important, but requires stub or mock for redis
-  private def getReferenceRatesAsStringsFromCache(referencePairWrapper: ReferenceRateWrapper[CurrenciesPair]) =
-    getRateFromRedis(key = referencePairWrapper.referenceValue)
-      .map(rate => ReferenceRateWrapper(rate))
-
-  // TODO PR (low) Test - important, but requires stub or mock for redis
-  private def getOppositeRefRatesAsStringsFromCache(
-      oppositeToRefPairWrapper: OppositeToRefRateWrapper[CurrenciesPair]
-  ) =
-    getRateFromRedis(key = oppositeToRefPairWrapper.referenceValue)
-      .map(rate => OppositeToRefRateWrapper(rate))
 
 }
 
@@ -238,14 +230,13 @@ object OneFrameLive {
   // TODO PR (low) - Handle logger dependency in a better way
   private def logger = LoggerFactory.getLogger(this.getClass)
 
-  // TODO PR (high) - Test this well
   private[interpreters] def decodeAndMergeRates(
-                                                 errorOrCacheResults: Either[RatesServiceError, List[TransitiveExchangeRate[String]]]
+      errorOrCacheResults: Either[RatesServiceError, TransitiveReferenceRatesWrapper[String]]
   ): Either[RatesServiceError, Rate] =
     for {
       wrappedEncodedRates <- errorOrCacheResults
-      errorsOrRates = decodeWrappedTransitiveEncodedRates(wrappedEncodedRates)
-      mergedRate <- mergeErrorsOrRates(errorsOrRates)
+      wrappedRates <- decodeWrappedTransitiveEncodedRates(wrappedEncodedRates)
+      mergedRate = calculateRateFromReferences(wrappedRates)
       _ <- Right(
             logger.debug(s"""decodeAndMergeRates() :
              |mergedRate = $mergedRate
@@ -254,44 +245,26 @@ object OneFrameLive {
     } yield mergedRate
 
   private[interpreters] def decodeWrappedTransitiveEncodedRates(
-      wrappedEncodedRated: List[TransitiveExchangeRate[String]]
-  ): List[Either[RatesServiceError, TransitiveExchangeRate[Rate]]] =
-    wrappedEncodedRated.map {
-      case ReferenceRateWrapper(rateAsString) =>
+      wrappedEncodedRated: TransitiveReferenceRatesWrapper[String]
+  ): Either[RatesServiceError, TransitiveReferenceRatesWrapper[Rate]] =
+    wrappedEncodedRated match {
+      case OppositeToRefRate(rateAsString) =>
         rateDecoderFromCacheOrServiceError(rateAsString)
-          .map(ReferenceRateWrapper.apply): Either[RatesServiceError, TransitiveExchangeRate[Rate]]
+          .map(OppositeToRefRate.apply): Either[RatesServiceError, TransitiveReferenceRatesWrapper[Rate]]
 
-      case OppositeToRefRateWrapper(rateAsString) =>
+      case ReferenceRate(rateAsString) =>
         rateDecoderFromCacheOrServiceError(rateAsString)
-          .map(OppositeToRefRateWrapper.apply): Either[RatesServiceError, TransitiveExchangeRate[Rate]]
-    }
+          .map(ReferenceRate.apply): Either[RatesServiceError, TransitiveReferenceRatesWrapper[Rate]]
 
-  private[interpreters] def mergeErrorsOrRates(
-      errorsOrRates: List[Either[RatesServiceError, TransitiveExchangeRate[Rate]]]
-  ) =
-    errorsOrRates match {
-      case Left(error) :: _ =>
-        Left(error)
-
-      case _ :: Left(error) :: _ =>
-        Left(error)
-
-      case List(Right(OppositeToRefRateWrapper(referenceRateForOpposite))) =>
-        Right(referenceRateForOpposite.opposite)
-
-      case List(Right(ReferenceRateWrapper(referenceRate))) =>
-        Right(referenceRate)
-
-      case List(
-          Right(oppositeWrapper: OppositeToRefRateWrapper[Rate]),
-          Right(referenceWrapper: ReferenceRateWrapper[Rate])
-          ) =>
-        val mergedRate =
-          TransitiveExchangeRate.rateByTransitivity(oppositeWrapper, referenceWrapper)
-        Right(mergedRate)
-
-      case _ =>
-        Left(RatesServiceError.OneFrameLookupFailed(s"Currently impossible to calculate this rate."))
+      case TransitiveRefRatesCouple(fromRateAsString, toRateAsString) =>
+        for {
+          oppositeRefRate <- rateDecoderFromCacheOrServiceError(rateAsString = fromRateAsString)
+          referenceRate <- rateDecoderFromCacheOrServiceError(rateAsString = toRateAsString)
+        } yield
+          TransitiveRefRatesCouple(
+            fromRef = oppositeRefRate,
+            toRef = referenceRate,
+          )
     }
 
   private[interpreters] def rateDecoderFromCacheOrServiceError(rateAsString: String) = {

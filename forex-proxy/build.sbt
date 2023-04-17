@@ -1,7 +1,7 @@
 import Dependencies._
 
 val appName = "forex-proxy"
-val versionCode = "1.1.0"
+val versionCode = "1.1.1"
 val author = "BrunierTerry"
 
 name := appName

@@ -47,6 +47,7 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
   implicit private val cs: ContextShift[IO] = IO.contextShift(global)
 
   // TODO PR (high) - consider moving dependencies outside the service to avoid multiple instantiations
+  // TODO PR (high) - find behavior for 6 incoming request at same time
   private val blockingPool           = Executors.newFixedThreadPool(5)
   private val blocker                = Blocker.liftExecutorService(blockingPool)
   private val httpClient: Client[IO] = JavaNetClientBuilder[IO](blocker).create
@@ -59,6 +60,7 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
   // TODO PR (low) - refactor and rename to be stack agnostic
   private val redis = new RedisClient(host = redisConfig.host, port = redisConfig.port)
 
+  // TODO PR (high) - handle redis not working
   private def getRateFromRedis(key: PairCode): Option[String] =
     redis.get[String](key)
   private def getRateFromRedis(key: CurrenciesPair): Option[String] =
@@ -78,6 +80,8 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
     )
   }
 
+  // TODO PR (high) - hide sensitive data
+  // TODO PR (high) - token env. var.
   private lazy val requestAllReferenceRateWrappers = {
     logger.trace(s"""requestAllReferenceRateWrappers :
          |requestAllReferenceRateWrappersUri=$requestAllReferenceRateWrappersUri ;
@@ -153,6 +157,7 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
     val preparedRequest = httpClient.expect[String](requestAllReferenceRateWrappers)
 
     // TODO PR (low) - find a more elegant way to lift IO as an Applicative F
+    // TODO PR NEXT (very high) - handle 500
     val results = preparedRequest.unsafeRunSync()
 
     import OneFrameResponse.rateDecoderFromResponse

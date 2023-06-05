@@ -33,6 +33,7 @@ class RatesHttpRoutes[F[_]: Sync](rates: RatesProgram[F]) extends Http4sDsl[F] {
                        )
           ratesRequest = RatesProgramProtocol.GetRatesRequest(fromCurrency, toCurrency)
           rate <- EitherT(rates.getExchangeRate(ratesRequest)).leftMap { programError =>
+                   // TODO PR - consider having Errors ADT wrapping safe response error codecd and detailed log
                    BadRequest(programError.msg)
                  }
         } yield Ok(rate.asGetApiResponse)
@@ -40,6 +41,17 @@ class RatesHttpRoutes[F[_]: Sync](rates: RatesProgram[F]) extends Http4sDsl[F] {
       errorResponseOrValidResponse.value.flatMap {
         case Right(successResponse) => successResponse
         case Left(failureResponse)  => failureResponse
+      }
+  }
+
+  paramOptionalValidationToRouteWrapper(
+    paramValidationOpt = from,
+    missingParamMessage = "Missing \"from\" currency parameter."
+  ).flatMap { fromCurrency =>
+    paramOptionalValidationToRouteWrapper(
+      paramValidationOpt = to,
+      missingParamMessage = "Missing \"to\" currency parameter."
+    ).flatMap { toCurrency =>
       }
   }
 
@@ -53,7 +65,7 @@ class RatesHttpRoutes[F[_]: Sync](rates: RatesProgram[F]) extends Http4sDsl[F] {
     paramValidation.toEither.left.map(_.head)
 
   private def eitherToResponseEitherWrapper[E, T](
-                                                   errorOrValue: Either[E, T]
+      errorOrValue: Either[E, T]
   )(makeResponse: E => F[Response[F]]): EitherBadResponseWrapper[T] = {
     val validParamOrBadRequest = errorOrValue.left.map(makeResponse)
     EitherT(validParamOrBadRequest.pure[F])

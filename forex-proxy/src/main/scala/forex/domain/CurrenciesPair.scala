@@ -32,7 +32,6 @@ object CurrenciesPair {
 
   type PairCode = String
 
-
   implicit val pairDecoder: Decoder[CurrenciesPair] = deriveDecoder
   implicit val pairEncoder: Encoder[CurrenciesPair] = deriveEncoder
 

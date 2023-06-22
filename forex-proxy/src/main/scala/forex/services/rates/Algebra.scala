@@ -1,6 +1,6 @@
 package forex.services.rates
 
-import forex.domain.{CurrenciesPair, Rate}
+import forex.domain.{ CurrenciesPair, Rate }
 import errors._
 
 trait Algebra[F[_]] {

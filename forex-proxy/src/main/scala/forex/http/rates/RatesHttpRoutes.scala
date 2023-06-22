@@ -53,7 +53,7 @@ class RatesHttpRoutes[F[_]: Sync](rates: RatesProgram[F]) extends Http4sDsl[F] {
     paramValidation.toEither.left.map(_.head)
 
   private def eitherToResponseEitherWrapper[E, T](
-                                                   errorOrValue: Either[E, T]
+      errorOrValue: Either[E, T]
   )(makeResponse: E => F[Response[F]]): EitherBadResponseWrapper[T] = {
     val validParamOrBadRequest = errorOrValue.left.map(makeResponse)
     EitherT(validParamOrBadRequest.pure[F])

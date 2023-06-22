@@ -23,7 +23,6 @@ import org.http4s.MediaType
 import org.http4s.Method._
 import org.http4s.util.CaseInsensitiveString
 import io.circe.parser.decode
-import com.redis.RedisClient
 import forex.domain.CurrenciesPair.PairCode
 import forex.domain.Currency.USD
 import forex.domain.logic.TransitiveReferenceRatesWrapper
@@ -52,17 +51,15 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
   private val httpClient: Client[IO] = JavaNetClientBuilder[IO](blocker).create
 
   private val oneFrameConfig = config.webServices.oneFrame
-  private val redisConfig    = config.webServices.redis
 
-  // TODO PR (high) - Wrap into a service to mock and test
-  // TODO PR (low) - Wrap into a service exposing only useful encapsulated methods
-  // TODO PR (low) - refactor and rename to be stack agnostic
-  private val redis = new RedisClient(host = redisConfig.host, port = redisConfig.port)
+  // TODO PR (high) - compose dependencies in a better way
+  private val cacheService = forex.services.caching.Interpreters.live(config)
 
-  private def getRateFromRedis(key: PairCode): Option[String] =
-    redis.get[String](key)
+  private def getRateFromCache(key: PairCode): Option[String] =
+    cacheService.get(key).unsafeRunSync() // TODO PR (high) - stop using unsafe run
+
   private def getRateFromRedis(key: CurrenciesPair): Option[String] =
-    getRateFromRedis(key = key.pairCode)
+    getRateFromCache(key = key.pairCode)
 
   private lazy val referencePairCodes =
     Currency.all
@@ -166,7 +163,7 @@ class OneFrameLive[F[_]: Applicative](config: ApplicationConfig) extends Algebra
                |Fresh rate from OneFrame service = $rate
                |""".stripMargin.replace('\n', ' '))
           val succeeded =
-            redis.set(rate.pairCode, rate.asJson)
+            cacheService.set(rate.pairCode, rate.asJson).unsafeRunSync() // TODO PR (high) - change this
           (rate.pairCode, succeeded)
         }
 
